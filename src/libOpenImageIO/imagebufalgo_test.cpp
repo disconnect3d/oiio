@@ -95,17 +95,30 @@ test_type_merge()
 
 
 
-// Helper: make an IB filled with a constant value
+// Helper: make an IB filled with a constant value, with a spec that
+// describes the image shape.
 static ImageBuf
-filled_image(cspan<float> value, int width = 4, int height = 4,
-             TypeDesc dtype = TypeDesc::FLOAT)
+filled_image(cspan<float> value, const ImageSpec& spec)
 {
-    ImageSpec spec(width, height, std::ssize(value), dtype);
     ImageBuf buf(spec);
     ImageBufAlgo::fill(buf, value);
     return buf;
 }
 
+// Helper: make an IB filled with a constant value, with given resolution and
+// data type (defaulting to 4x4 float), with number of channels determined by
+// the size of the value array).
+static ImageBuf
+filled_image(cspan<float> value, int width = 4, int height = 4,
+             TypeDesc dtype = TypeDesc::FLOAT)
+{
+    ImageSpec spec(width, height, std::ssize(value), dtype);
+    return filled_image(value, spec);
+}
+
+// Helper: make a 4x4 IB filled with a constant value, with given data type
+// (defaulting to float), with number of channels determined by the size of
+// the value array).
 inline ImageBuf
 filled_image(cspan<float> value, TypeDesc dtype)
 {
@@ -556,7 +569,6 @@ test_over(TypeDesc dtype = TypeFloat)
     // Create buffers
     const float BGval[] = { 0.5f, 0.0f, 0.0f, 0.5f };
     ImageBuf BG         = filled_image(BGval, dtype);
-    // Note: we use half for BG to force mixed types for this first test
 
     ImageBuf FG         = filled_image({ 0.0f, 0.0f, 0.0f, 0.0f }, dtype);
     const float FGval[] = { 0.0f, 0.5f, 0.0f, 0.5f };
@@ -585,6 +597,41 @@ test_over(TypeDesc dtype = TypeFloat)
     ImageBufAlgo::fill(FG, FGval, ROI(250, 750, 100, 900));
     R.reset(onekfloat);
     bench("  IBA::over ", [&]() { ImageBufAlgo::over(R, FG, BG); });
+}
+
+
+
+// Test ImageBuf::zover
+void
+test_zover()
+{
+    std::cout << "test zover\n";
+
+    ImageSpec spec(4, 4, 5, TypeFloat);
+    spec.channelnames.assign({ "R", "G", "B", "A", "Z" });
+    spec.z_channel = 4;
+
+    ROI roi(2, 4, 1, 3);  // region with fg
+
+    // Create buffers
+    const float Aval[] = { 0.5f, 0.5, 0.5, 1.0f, 10.0f };  // z == 10
+    ImageBuf A         = filled_image(Aval, spec);
+
+    ImageBuf B         = filled_image({ 0.0f, 0.0f, 0.0f, 1.0f, 15.0f }, spec);
+    const float Bval[] = { 1.0f, 1.0f, 1.0f, 1.0f, 5.0f };
+    ImageBufAlgo::fill(B, Bval, roi);
+
+    // Test zover
+    ImageBuf R = ImageBufAlgo::zover(A, B, true);
+    int nc     = R.nchannels();
+    for (ImageBuf::ConstIterator<float> r(R); !r.done(); ++r) {
+        if (roi.contains(r.x(), r.y()))
+            for (int c = 0; c < nc; ++c)
+                OIIO_CHECK_EQUAL(R.getchannel(r.x(), r.y(), 0, c), Bval[c]);
+        else
+            for (int c = 0; c < nc; ++c)
+                OIIO_CHECK_EQUAL(R.getchannel(r.x(), r.y(), 0, c), Aval[c]);
+    }
 }
 
 
@@ -1133,6 +1180,7 @@ main(int argc, char** argv)
     test_max();
     test_over(TypeFloat);
     test_over(TypeHalf);
+    test_zover();
     test_compare();
     test_isConstantColor();
     test_isConstantChannel();
