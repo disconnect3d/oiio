@@ -9,6 +9,7 @@
 namespace PyOpenImageIO {
 
 
+#if 0 /* unused */
 const char*
 python_array_code(TypeDesc format)
 {
@@ -28,7 +29,7 @@ python_array_code(TypeDesc format)
         return "B";
     }
 }
-
+#endif
 
 
 TypeDesc
